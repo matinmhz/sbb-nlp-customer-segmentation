@@ -4,7 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Iterable
 
 import requests
@@ -130,7 +130,7 @@ def main() -> None:
     print(
         json.dumps(
             {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "reviews_scraped": len(reviews),
                 "output": args.output,
             },

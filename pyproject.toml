@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sbb-nlp-customer-segmentation"
+version = "0.1.0"
+description = "NLP pipeline for Trustpilot scraping and customer segmentation."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "openpyxl>=3.1.0",  # Excel file generation
+  "selenium>=4.17.0",  # Browser automation for Trustpilot
+]
+
+[project.optional-dependencies]
+selenium = [
+  "openpyxl>=3.1.0",
+  "selenium>=4.17.0",
+]
+dev = [
+  "black>=24.0.0",
+  "ruff>=0.5.0",
+  "isort>=5.13.0",
+]
+all = [
+  "black>=24.0.0",
+  "ruff>=0.5.0",
+  "isort>=5.13.0",
+]
+

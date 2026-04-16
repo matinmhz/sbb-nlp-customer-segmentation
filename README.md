@@ -11,31 +11,39 @@ This repository now includes a Python dev container at:
 - `.devcontainer/devcontainer.json`
 
 In VS Code, run **Dev Containers: Reopen in Container**.
-It will install dependencies from `requirements-dev.txt` automatically.
+It will install all dependencies from `pyproject.toml` (including optional tooling) automatically.
 
 ### 2) Install dependencies locally (without dev container)
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e .
 ```
 
-### 3) Scrape Trustpilot reviews (requests-based)
+### 3) Scrape Trustpilot reviews (Selenium)
 
 ```bash
-python trustpilot_scraper.py "https://www.trustpilot.com/review/example.com" --output reviews.json --max-reviews 20
+python src/scraper/01_trustpilot_scraper.py
 ```
 
-### 4) Optional Selenium fallback
+This writes an Excel file to:
 
-If Trustpilot content is highly dynamic and requests parsing returns too little data:
+- `data/trustpilot_reviews.xlsx`
+
+### 4) Notes about generated output
+
+Generated files are intentionally ignored from git:
+
+- `data/*.xlsx`
+- `src/scraper/.wdm/`
+
+You can also install only formatting/linting tools with:
 
 ```bash
-pip install -r requirements-selenium.txt
-python trustpilot_scraper.py "https://www.trustpilot.com/review/example.com" --use-selenium --output reviews.json
+pip install -e .[dev]
 ```
 
 ### 5) Run tests
 
 ```bash
-python -m unittest discover -s tests
+python -m unittest -v tests/test_01_trustpilot_scraper.py
 ```

@@ -17,6 +17,8 @@ It will install all dependencies from `pyproject.toml` (including optional tooli
 
 ```bash
 pip install -e .
+
+
 ```
 
 ### 3) Scrape Trustpilot reviews (Selenium)

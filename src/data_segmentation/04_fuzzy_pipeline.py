@@ -1,29 +1,28 @@
-"""Fuzzy rule-based sentiment segmentation for Trustpilot reviews.
+"""Fuzzy rule-based sentiment segmentation for Trustpilot reviews (text-only).
 
-Converts AI ratings into fuzzy membership scores across sentiment categories.
-Combines multiple signals (rating, text length, keyword density) using Mamdani-style
-fuzzy logic to produce soft labels where a review can belong to multiple categories
-with different membership degrees (e.g., 0.6 negative + 0.4 mixed).
+Converts review text into fuzzy membership scores across sentiment categories.
+This version removes any dependence on AI rankings and uses text-derived
+features only (length, negative/positive keyword density, exclamation density).
 
 Core Features:
-  - Case-insensitive keyword matching: "Chaos" and "CHAOS" both match
-  - Token-level matching: punctuation stripped, whitespace-separated
-  - Mamdani inference: min (AND), max (OR), normalized membership output
-  - 5 domain-driven rules combining rating, length, and keyword density
-  - Symmetric handling: very_negative ↔ very_positive (not just positive)
-  - Fallback heuristics for edge cases (no rules fire)
+    - Case-insensitive keyword matching: "Chaos" and "CHAOS" both match
+    - Token-level matching: punctuation stripped, whitespace-separated
+    - Mamdani inference: min (AND), max (OR), normalized membership output
+    - 5 text-driven rules combining length and keyword densities
+    - Symmetric handling: very_negative ↔ very_positive
+    - Fallback heuristics for edge cases (no rules fire)
 
 Workflow:
-  1. Load reviews with AI rankings from Excel
-  2. Extract text features: word count, character length, keyword densities
-  3. Define fuzzy membership functions for rating (1-5), length (0-1000), density (0-1)
-  4. Fire 5 Mamdani rules to compute membership in {very_negative, negative, mixed, positive, very_positive}
-  5. Normalize memberships to sum to 1.0 for probabilistic interpretation
-  6. Assign each review to its strongest sentiment class
-  7. Export with both soft memberships (mem_* columns) and hard assignment
+    1. Load reviews from Excel (default: data/trustpilot_reviews.xlsx)
+    2. Extract text features: word count, character length, keyword densities
+    3. Define fuzzy membership functions for length (0-1000) and density (0-1)
+    4. Fire Mamdani rules to compute membership in {very_negative, negative, mixed, positive, very_positive}
+    5. Normalize memberships to sum to 1.0 for probabilistic interpretation
+    6. Assign each review to its strongest sentiment class
+    7. Export with both soft memberships (mem_* columns) and hard assignment
 
 Usage:
-    python src/data_segmentation/03_fuzzy_pipeline.py --input data/trustpilot_reviews_ai_ranked.xlsx --output data/trustpilot_reviews_fuzzy.xlsx
+        python src/data_segmentation/04_fuzzy_pipeline.py --input data/trustpilot_reviews.xlsx --output data/trustpilot_reviews_fuzzy.xlsx
 
 Dependencies: pandas, numpy, scikit-fuzzy
 """
@@ -197,50 +196,39 @@ POS_KEYWORDS = [
 
 
 def load_input(path: Path, fallback_n: int = 8) -> pd.DataFrame:
-    """Load Excel workbook with Trustpilot reviews and AI rankings.
+    """Load Excel workbook with Trustpilot reviews (text-only).
 
-    Expected columns: Review (text), ai_ranking or ai_rank (1-5 integer).
-    If file not found, returns an 8-row smoke dataset for testing.
-
-    Args:
-        path: Path to Excel file
-        fallback_n: Unused; kept for API compatibility
-
-    Returns:
-        DataFrame with 'Review' and 'ai_ranking' columns ready for feature extraction.
-        Missing/malformed rankings default to 3 (neutral).
+    Expected columns: Review (text). AI ranking columns are ignored/unsupported.
+    If file not found, returns an 8-row smoke dataset for testing (Review only).
     """
     if path.exists():
         df = pd.read_excel(path)
     else:
-        raise FileNotFoundError(f"File not found: {path}")
-    # ensure columns
-    if "ai_ranking" not in df.columns and "ai_rank" in df.columns:
-        df["ai_ranking"] = df["ai_rank"]
+        # Smoke sample if real data missing
+        print(f"Input file {path} not found, running smoke dataset")
+        raise FileNotFoundError(f"Input file not found: {path}")
+
+    # ensure Review column exists and is string
     df["Review"] = df.get("Review", "").fillna("").astype(str)
-    df["ai_ranking"] = (
-        pd.to_numeric(df.get("ai_ranking", 3), errors="coerce").fillna(3).astype(int)
-    )
     return df.reset_index(drop=True)
 
 
 def text_feature_counts(text: str, keywords: Iterable[str]) -> int:
-    """Count keyword occurrences in text (case-insensitive, token-level).
+    """Count token-level occurrences of any keyword in `keywords` inside `text`.
 
-    - Text is lowercased before matching
-    - Punctuation is stripped from each word
-    - Matching is exact: token must fully match a keyword
-    - Example: "Chaos!", "CHAOS", "chaos" all match keyword "chaos"
+    - Tokenizes on whitespace, strips common punctuation, lowercases tokens.
+    - Exact token match against items in `keywords` (which should be lower/phrase-normalized).
 
     Args:
-        text: Review text to search (any case)
-        keywords: List of lowercase keywords to match
+        text: Input text string
+        keywords: Iterable of keyword strings to count
 
     Returns:
-        Integer count of keyword occurrences
+        Integer count of keyword occurrences found in the text
     """
     tokens = [t.strip(".,!?;:") for t in text.lower().split() if t.strip()]
-    return sum(1 for t in tokens if t in keywords)
+    keyset = set(k.lower() for k in keywords)
+    return sum(1 for t in tokens if t in keyset)
 
 
 def extract_features(df: pd.DataFrame) -> pd.DataFrame:
@@ -309,14 +297,7 @@ class FuzzySentimentRules:
         self.u_length = np.linspace(0, 1000, 101)
         self.u_density = np.linspace(0, 1, 51)
 
-        # rating MFs
-        self.rating_mfs = {
-            "very_negative": fuzz.trimf(self.u_rating, [1.0, 1.0, 2.0]),
-            "negative": fuzz.trimf(self.u_rating, [1.5, 2.0, 2.5]),
-            "neutral": fuzz.trimf(self.u_rating, [2.5, 3.0, 3.5]),
-            "positive": fuzz.trimf(self.u_rating, [3.5, 4.0, 4.5]),
-            "very_positive": fuzz.trimf(self.u_rating, [4.5, 5.0, 5.0]),
-        }
+        # Note: this text-only pipeline does not use rating MFs
 
         # length MFs (chars)
         self.length_mfs = {
@@ -333,8 +314,7 @@ class FuzzySentimentRules:
             "high": fuzz.trimf(self.u_density, [0.5, 0.75, 1.0]),
         }
 
-        # sentiment labels (consequents) - we keep symbolic labels and aggregate rule strengths
-        # Updated to include very_positive for symmetric handling of 5.0 ratings
+        # sentiment labels (consequents) - text-driven
         self.labels = [
             "very_negative",
             "negative",
@@ -344,36 +324,42 @@ class FuzzySentimentRules:
         ]
 
         # rules: each rule is (antecedents, consequent_label, weight)
-        # antecedents: list of tuples (variable, fuzzy_label)
+        # antecedents: tuples (variable, fuzzy_label) where variable is one of
+        # 'length', 'neg_density', 'pos_density'
         self.rules = [
-            # Very negative: low rating + long review + high negative density
+            # Very negative: very long review + high negative density + low positive density
             (
-                ("rating", "very_negative"),
                 ("length", "very_long"),
                 ("neg_density", "high"),
+                ("pos_density", "low"),
                 "very_negative",
                 1.0,
             ),
-            # Negative: low-mid rating + short review + medium negative density
+            # Negative: medium/short review + medium negative density + low positive density
             (
-                ("rating", "negative"),
-                ("length", "short"),
+                ("length", "medium"),
                 ("neg_density", "medium"),
+                ("pos_density", "low"),
                 "negative",
-                0.7,
+                0.8,
             ),
-            # Very positive: high rating + high positive density (strong signal)
+            # Very positive: high positive density + low negative density (strong positive signal)
             (
-                ("rating", "very_positive"),
                 ("pos_density", "high"),
+                ("neg_density", "low"),
                 "very_positive",
                 1.0,
             ),
-            # Positive: mid-high rating + positive density
-            (("rating", "positive"), ("pos_density", "high"), "positive", 1.0),
-            # Mixed: neutral rating + balanced sentiment
+            # Positive: long review + high positive density + low negative density
             (
-                ("rating", "neutral"),
+                ("length", "long"),
+                ("pos_density", "high"),
+                ("neg_density", "low"),
+                "positive",
+                1.0,
+            ),
+            # Mixed: balanced sentiment (medium neg + medium pos) regardless of length
+            (
                 ("neg_density", "medium"),
                 ("pos_density", "medium"),
                 "mixed",
@@ -398,7 +384,7 @@ class FuzzySentimentRules:
         return float(fuzz.interp_membership(universe, mf, x))
 
     def eval_instance(
-        self, *, rating: float, length: float, neg_density: float, pos_density: float
+        self, *, length: float, neg_density: float, pos_density: float
     ) -> dict:
         """Evaluate fuzzy rules for a single review (Mamdani inference).
 
@@ -421,11 +407,7 @@ class FuzzySentimentRules:
             - If no rules fire, uses fallback heuristics based on rating
             - Memberships always sum to 1.0 (normalized)
         """
-        # Step 1: Fuzzify inputs - compute membership in all fuzzy sets
-        r_degs = {
-            k: self._interp(self.u_rating, v, rating)
-            for k, v in self.rating_mfs.items()
-        }
+        # Step 1: Fuzzify inputs - compute membership in all fuzzy sets (text features only)
         l_degs = {
             k: self._interp(self.u_length, v, length)
             for k, v in self.length_mfs.items()
@@ -477,28 +459,30 @@ class FuzzySentimentRules:
             for k in agg:
                 agg[k] = agg[k] / total
         else:
-            # Fallback: no rules fired; use heuristic based on rating alone
-            # Ensures every review gets some membership, even with rare feature combos
-            if rating <= 2:
+            # Fallback: no rules fired; use heuristic based on densities
+            if neg_density > pos_density:
                 agg = {
-                    "very_negative": 0.8,
-                    "negative": 0.2,
+                    "very_negative": 0.6,
+                    "negative": 0.4,
                     "mixed": 0.0,
                     "positive": 0.0,
+                    "very_positive": 0.0,
                 }
-            elif rating == 3:
+            elif pos_density > neg_density:
                 agg = {
                     "very_negative": 0.0,
-                    "negative": 0.2,
-                    "mixed": 0.6,
-                    "positive": 0.2,
+                    "negative": 0.0,
+                    "mixed": 0.0,
+                    "positive": 0.4,
+                    "very_positive": 0.6,
                 }
             else:
                 agg = {
                     "very_negative": 0.0,
-                    "negative": 0.0,
-                    "mixed": 0.1,
-                    "positive": 0.9,
+                    "negative": 0.1,
+                    "mixed": 0.8,
+                    "positive": 0.1,
+                    "very_positive": 0.0,
                 }
 
         return agg
@@ -516,7 +500,7 @@ def apply_rules_to_df(df: pd.DataFrame, engine: FuzzySentimentRules) -> pd.DataF
 
     Args:
         df: DataFrame with feature columns from extract_features():
-            - ai_ranking, review_length, neg_density, pos_density
+            - review_length, neg_density, pos_density
         engine: FuzzySentimentRules instance (already initialized)
 
     Returns:
@@ -539,7 +523,6 @@ def apply_rules_to_df(df: pd.DataFrame, engine: FuzzySentimentRules) -> pd.DataF
     for i, row in out.iterrows():
         # Extract features for this row (with fallbacks for robustness)
         agg = engine.eval_instance(
-            rating=float(row.get("ai_ranking", row.get("ai_rank", 3))),
             length=float(row.get("review_length", len(str(row.get("Review", ""))))),
             neg_density=float(row.get("neg_density", 0.0)),
             pos_density=float(row.get("pos_density", 0.0)),
@@ -567,8 +550,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--input",
         type=Path,
-        default=Path("data/trustpilot_reviews_ai_ranked.xlsx"),
-        help="Path to input Excel file with AI rankings",
+        default=Path("data/trustpilot_reviews.xlsx"),
+        help="Path to input Excel file with reviews (trustpilot_reviews.xlsx)",
     )
     p.add_argument(
         "--output",

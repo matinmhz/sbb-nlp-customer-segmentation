@@ -1,8 +1,8 @@
-"""Evaluate fuzzy segmentation against numeric ratings.
+"""Evaluate fuzzy segmentation against human ratings.
 
 Validates fuzzy pipeline output by comparing fuzzy assignments to ground truth labels.
 Reads fuzzy output with soft memberships (mem_* columns) and hard assignment (assigned_label),
-maps numeric ratings to sentiment labels symmetrically, and computes:
+maps human Rating column to sentiment labels symmetrically, and computes:
   - Crisp accuracy: proportion of correctly assigned labels
   - Confusion matrix: error distribution across sentiment classes
   - Fuzzy statistics: mean/median membership in true label, proportion with high confidence
@@ -13,7 +13,7 @@ This provides both quantitative validation (accuracy) and confidence metrics
 Input Requirements:
   - assigned_label: Hard assignment from fuzzy pipeline (very_negative, negative, mixed, positive, very_positive)
   - mem_very_negative, mem_negative, mem_mixed, mem_positive, mem_very_positive: Soft membership scores [0, 1]
-  - Rating (preferred) or ai_ranking: Ground truth numeric labels (1-5)
+  - Rating: Ground truth human ratings (1-5) from Trustpilot
 
 Output:
   - Excel workbook with 3 sheets:
@@ -38,20 +38,27 @@ import numpy as np
 def load_df(path: Path) -> pd.DataFrame:
     """Load Excel file with fuzzy pipeline output.
 
-    Expected columns: assigned_label, mem_* (membership columns), Rating or ai_ranking
+    Expected columns: assigned_label, mem_* (membership columns), Rating (human ratings)
 
     Args:
         path: Path to Excel file from 03_fuzzy_pipeline.py
 
     Returns:
-        DataFrame with fuzzy output
+        DataFrame with fuzzy output and human ratings
 
     Raises:
         FileNotFoundError: If file does not exist
+        ValueError: If Rating column is missing
     """
     if not path.exists():
         raise FileNotFoundError(f"Input not found: {path}")
-    return pd.read_excel(path)
+    df = pd.read_excel(path)
+    if "Rating" not in df.columns:
+        raise ValueError(
+            "Rating column not found in input file. "
+            "Expected human ratings from Trustpilot for evaluation."
+        )
+    return df
 
 
 def rating_to_label(rating: float) -> str:
@@ -65,7 +72,7 @@ def rating_to_label(rating: float) -> str:
       - 4.5 <= rating: very_positive
 
     Args:
-        rating: Numeric value from Rating or ai_ranking column
+        rating: Numeric value from the Rating column (1-5)
 
     Returns:
         Sentiment label string: very_negative, negative, mixed, positive, or very_positive
@@ -99,24 +106,24 @@ def compute_basic_metrics(
     """Compute evaluation metrics comparing fuzzy assignments to ground truth.
 
     Computes:
-      1. true_label: Ground truth sentiment from Rating or ai_ranking (symmetric 5-class mapping)
+      1. true_label: Ground truth sentiment from human Rating (symmetric 5-class mapping)
       2. Crisp accuracy: Proportion of correct hard assignments
       3. Confusion matrix: Cross-tabulation of true vs assigned labels
       4. Fuzzy statistics: Mean/median membership in correct class, high-confidence proportion
 
-    Ground truth mapping (symmetric):
+    Ground truth mapping (symmetric, from human Rating):
       - 1.0: very_negative  ↔  4.5+: very_positive
       - 1.0-2.0: negative   ↔  4.0-4.5: positive
       - 2.0-4.0: mixed (balanced)
 
     Args:
-        df: DataFrame with assigned_label, mem_* columns, Rating or ai_ranking
+        df: DataFrame with assigned_label, mem_* columns, Rating (human ratings)
         labels: List of sentiment labels (for reference, not used in this function)
 
     Returns:
         (df_eval, stats):
         - df_eval: Input DataFrame with added columns:
-            * true_label: Ground truth sentiment class (5-class symmetric)
+            * true_label: Ground truth sentiment class from human Rating
             * mem_true_label: Membership in the correct class
         - stats: Dict with evaluation metrics:
             * n_rows: Total number of reviews
@@ -126,10 +133,8 @@ def compute_basic_metrics(
             * median_membership_true_label: Median confidence
             * prop_mem_ge_0.5: Proportion of reviews with >= 0.5 membership in true class
     """
-    # Step 1: Map numeric ratings to true sentiment labels
-    # Prefer 'Rating' if available; fall back to 'ai_ranking' for AI-ranked reviews
-    if "Rating" in df.columns:
-        df["true_label"] = df["Rating"].apply(rating_to_label)
+    # Step 1: Map human ratings to true sentiment labels
+    df["true_label"] = df["Rating"].apply(rating_to_label)
 
     # Step 2: Get assigned label from fuzzy pipeline (or compute if missing)
     if "assigned_label" not in df.columns:
@@ -178,28 +183,10 @@ def compute_basic_metrics(
     return df, stats
 
 
-def parse_args() -> argparse.Namespace:
-    """Parse command-line arguments for evaluation script.
-
-    Returns:
-        Namespace with 'input' (fuzzy output) and 'output' (evaluation results) paths
-    """
-    p = argparse.ArgumentParser(
-        description="Evaluate fuzzy segmentation against ratings"
-    )
-    p.add_argument(
-        "--input",
-        type=Path,
-        default=Path("data/trustpilot_reviews_fuzzy.xlsx"),
-        help="Path to fuzzy pipeline output (from 03_fuzzy_pipeline.py)",
-    )
-    p.add_argument(
-        "--output",
-        type=Path,
-        default=Path("data/eval_fuzzy_summary.xlsx"),
-        help="Path to write evaluation results (3 sheets: rows, confusion, summary)",
-    )
-    return p.parse_args()
+# Input is fixed for this evaluation; no CLI parsing required.
+# The pipeline writes fuzzy output to `data/trustpilot_reviews_fuzzy.xlsx`.
+INPUT_PATH = Path("data/trustpilot_reviews_fuzzy.xlsx")
+OUTPUT_PATH = Path("data/eval_fuzzy_summary.xlsx")
 
 
 def main() -> None:
@@ -216,12 +203,13 @@ def main() -> None:
          - confusion: Confusion matrix showing error distribution
          - summary: Key metrics for quick reference
     """
-    # Step 1: Parse arguments
-    args = parse_args()
+    # Step 1: Use fixed input/output paths (no CLI)
+    input_path = INPUT_PATH
+    output_path = OUTPUT_PATH
 
     # Step 2: Load fuzzy output with error handling
     try:
-        df = load_df(args.input)
+        df = load_df(input_path)
     except FileNotFoundError as e:
         print(e)
         sys.exit(1)
@@ -231,7 +219,7 @@ def main() -> None:
     labels = sorted({c.replace("mem_", "") for c in df.columns if c.startswith("mem_")})
     # Fallback to standard labels if none found
     if not labels:
-        labels = ["very_negative", "negative", "mixed", "positive"]
+        labels = ["very_negative", "negative", "mixed", "positive", "very_positive"]
 
     # Step 4: Compute metrics
     df_eval, stats = compute_basic_metrics(df, labels)
@@ -250,7 +238,7 @@ def main() -> None:
     print(stats["confusion_matrix"])
 
     # Step 6: Export results to Excel workbook with 3 sheets
-    with pd.ExcelWriter(args.output, engine="openpyxl") as writer:
+    with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
         # Sheet 1: Full evaluated DataFrame with added true_label and mem_true_label columns
         df_eval.to_excel(writer, sheet_name="rows", index=False)
 
@@ -275,7 +263,7 @@ def main() -> None:
         )
         summary_df.to_excel(writer, sheet_name="summary", index=False)
 
-    print(f"Wrote evaluation -> {args.output}")
+    print(f"Wrote evaluation -> {output_path}")
 
 
 if __name__ == "__main__":

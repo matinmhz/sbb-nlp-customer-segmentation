@@ -23,28 +23,25 @@ pip install -e .
 
 High-level pipeline (recommended order):
 
+![High-level pipeline architecture](./assets/pipeline.png)
+
 1. Scrape Trustpilot reviews into Excel
 	- Script: `src/scraper/01_trustpilot_scraper.py`
 	- Output: `data/trustpilot_reviews.xlsx`
 
-2. (Optional) Produce AI ranking column (not required)
-	- The fuzzy pipeline now runs on raw review text by default.
-	- If you have a separate AI ranking step, you may still include an `ai_ranking` column; it will be ignored by the default pipeline.
-	- Expected values (if produced): integer 1..5 (missing values treated as 3)
-
-3. Preprocess raw scraped reviews (remove exact duplicates)
+2. Preprocess raw scraped reviews (remove exact duplicates)
 	- Script: `src/data_segmentation/03_data_preprocessing.py`
 	- Default input/output: `data/trustpilot_reviews.xlsx` (script overwrites the file after creating a timestamped backup)
 	- Behavior: normalizes `Author` and `Review` (strip/fill), removes exact duplicates on (`Author`, `Review`) keeping the first occurrence
 
-4. Run fuzzy segmentation (feature extraction + Mamdani FIS)
+3. Run fuzzy segmentation (feature extraction + Mamdani FIS)
 	- Script: `src/data_segmentation/04_fuzzy_pipeline.py`
 	- Input: `data/trustpilot_reviews.xlsx` (text-only reviews).
 	- Output: `data/trustpilot_reviews_fuzzy.xlsx`
 	- Produces soft membership columns: `mem_very_negative, mem_negative, mem_mixed, mem_positive, mem_very_positive`
 	- Produces hard assignment column: `assigned_label`
 
-5. Evaluate fuzzy output against ground truth ratings
+4. Evaluate fuzzy output against ground truth ratings
 	- Script: `src/data_segmentation/05_evaluate_fuzzy.py`
 	- Input: `data/trustpilot_reviews_fuzzy.xlsx` (the script uses this path by default)
 	- Output: `data/eval_fuzzy_summary.xlsx` (sheets: `rows`, `confusion`, `summary`)

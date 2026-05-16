@@ -213,25 +213,7 @@ def load_input(path: Path, fallback_n: int = 8) -> pd.DataFrame:
     if path.exists():
         df = pd.read_excel(path)
     else:
-        # Smoke sample if real data missing
-        print(f"Input file {path} not found, running smoke dataset")
-        rows = [
-            {"ID": i + 1, "Review": txt, "ai_ranking": r}
-            for i, (txt, r) in enumerate(
-                [
-                    ("Terrible service, huge delay and no refund", 1),
-                    ("Not happy, they never responded", 2),
-                    ("It was okay, nothing special", 3),
-                    ("Good experience, helpful staff", 4),
-                    ("Excellent! Fast and perfect", 5),
-                    ("App crashed a lot, but support helped", 3),
-                    ("Refund issued quickly, thank you", 5),
-                    ("Still waiting for my ticket, unacceptable", 1),
-                ]
-            )
-        ]
-        df = pd.DataFrame(rows)
-
+        raise FileNotFoundError(f"File not found: {path}")
     # ensure columns
     if "ai_ranking" not in df.columns and "ai_rank" in df.columns:
         df["ai_ranking"] = df["ai_rank"]

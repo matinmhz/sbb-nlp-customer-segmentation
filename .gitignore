@@ -210,3 +210,4 @@ __marimo__/
 # Generated scraper outputs
 /data
 src/scraper/.wdm/
+.devcontainer/devcontainer-lock.json

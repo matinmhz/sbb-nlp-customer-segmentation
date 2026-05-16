@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.2.0",  # Tabular data wrangling for review analysis
   "numpy>=1.26.0",  # Numeric operations and vector processing
-  "scikit-learn>=1.5.0",  # Clustering, feature extraction, and ML utilities
+  "scikit-learn>=1.5.0",  # Clustering, feature extraction and ML utilities
   "scikit-fuzzy>=0.5.0",  # Fuzzy clustering and fuzzy logic segmentation
   "matplotlib>=3.8.0",  # Static charts for notebook analysis
   "seaborn>=0.13.0",  # Statistical visualizations

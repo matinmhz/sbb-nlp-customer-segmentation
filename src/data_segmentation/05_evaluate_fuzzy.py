@@ -2,7 +2,7 @@
 
 Validates fuzzy pipeline output by comparing fuzzy assignments to ground truth labels.
 Reads fuzzy output with soft memberships (mem_* columns) and hard assignment (assigned_label),
-maps human Rating column to sentiment labels symmetrically, and computes:
+maps human Rating column to sentiment labels symmetrically and computes:
   - Crisp accuracy: proportion of correctly assigned labels
   - Confusion matrix: error distribution across sentiment classes
   - Fuzzy statistics: mean/median membership in true label, proportion with high confidence

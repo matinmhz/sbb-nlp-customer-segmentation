@@ -36,7 +36,7 @@ def save_excel(df: pd.DataFrame, path: Path) -> None:
 
 
 def deduplicate_author_review(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
-    """Normalize text, drop short/empty reviews, and remove exact duplicates.
+    """Normalize text, drop short/empty reviews and remove exact duplicates.
 
     Returns (cleaned_df, n_removed_duplicates, n_removed_short).
     Keeps the first occurrence of each (Author, Review) pair after removing short reviews.

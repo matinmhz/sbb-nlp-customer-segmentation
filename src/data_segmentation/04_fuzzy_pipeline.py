@@ -284,7 +284,7 @@ class FuzzySentimentRules:
     Encapsulates:
       - Fuzzy universes: rating [1,5], length [0,1000], density [0,1]
       - Membership functions: triangular for linguistic terms
-      - 4 domain-driven rules combining rating, length, and density
+      - 4 domain-driven rules combining rating, length and density
       - Mamdani inference: min (AND), max (OR), normalized output
 
     Each review gets fuzzy membership in: {very_negative, negative, mixed, positive}
